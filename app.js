@@ -1,522 +1,459 @@
-// Focus Budget - Main Application Logic
-// Manages focus items, pie chart visualization, and PDF export
-
+// ── Application State ──
 let focusItems = [];
-let selectedIndex = null;
+let selectedFocusId = null;
 
-// DOM elements
-const focusForm = document.getElementById('focusForm');
-const focusInput = document.getElementById('focusInput');
-const focusList = document.getElementById('focusList');
-const pieChart = document.getElementById('pieChart');
-const itemCount = document.getElementById('itemCount');
-const controlsSection = document.getElementById('controlsSection');
-const controlsTitle = document.getElementById('controlsTitle');
-const controlsPercent = document.getElementById('controlsPercent');
-const emptyState = document.querySelector('.empty');
+// ── DOM Cache ──
+const DOM = {
+  form: null,
+  focusInput: null,
+  addBtn: null,
+  list: null,
+  pieChart: null,
+  pieWrap: null,
+  empty: null,
+  controlsSection: null,
+  controlsTitle: null,
+  controlsPercent: null,
+  itemCount: null,
+  clearBtn: null,
+  exportBtn: null,
+};
 
-// Control buttons
-const moveTopBtn = document.getElementById('moveTopBtn');
-const moveUpBtn = document.getElementById('moveUpBtn');
-const moveDownBtn = document.getElementById('moveDownBtn');
-const moveBottomBtn = document.getElementById('moveBottomBtn');
-
-// Footer buttons
-const exportBtn = document.getElementById('exportBtn');
-const clearBtn = document.getElementById('clearBtn');
-
-// Initialize
-document.addEventListener('DOMContentLoaded', init);
-
+// ── Initialization ──
 function init() {
-  loadFromStorage();
+  // Cache DOM elements
+  DOM.form = document.getElementById("focusForm");
+  DOM.focusInput = document.getElementById("focusInput");
+  DOM.addBtn = document.getElementById("addBtn");
+  DOM.list = document.getElementById("focusList");
+  DOM.pieChart = document.getElementById("pieChart");
+  DOM.pieWrap = document.querySelector(".pieWrap");
+  DOM.empty = document.querySelector(".empty");
+  DOM.controlsSection = document.getElementById("controlsSection");
+  DOM.controlsTitle = document.getElementById("controlsTitle");
+  DOM.controlsPercent = document.getElementById("controlsPercent");
+  DOM.itemCount = document.getElementById("itemCount");
+  DOM.clearBtn = document.getElementById("clearBtn");
+  DOM.exportBtn = document.getElementById("exportBtn");
+
+  // Load data
+  focusItems = loadFocusItems();
+  
+  // Setup event listeners
+  setupEventListeners();
+  
+  // Initial render
   render();
-  attachEventListeners();
 }
 
-function attachEventListeners() {
-  focusForm.addEventListener('submit', handleAdd);
-  exportBtn.addEventListener('click', handleExport);
-  clearBtn.addEventListener('click', handleClear);
+// ── Event Listeners Setup ──
+function setupEventListeners() {
+  // Form submission
+  DOM.form.addEventListener("submit", handleAddFocus);
   
-  moveTopBtn.addEventListener('click', () => moveItem('top'));
-  moveUpBtn.addEventListener('click', () => moveItem('up'));
-  moveDownBtn.addEventListener('click', () => moveItem('down'));
-  moveBottomBtn.addEventListener('click', () => moveItem('bottom'));
+  // List event delegation
+  DOM.list.addEventListener("click", handleListClick);
+  DOM.list.addEventListener("dragstart", handleDragStart);
+  DOM.list.addEventListener("dragend", handleDragEnd);
+  DOM.list.addEventListener("dragover", handleDragOver);
+  DOM.list.addEventListener("dragleave", handleDragLeave);
+  DOM.list.addEventListener("drop", handleDrop);
+  
+  // Footer buttons
+  DOM.clearBtn.addEventListener("click", handleClearAll);
+  DOM.exportBtn.addEventListener("click", handleExport);
   
   // Keyboard shortcuts
-  document.addEventListener('keydown', handleKeyboard);
+  document.addEventListener("keydown", handleKeyboardShortcuts);
 }
 
-function handleAdd(e) {
+// ── Event Handlers ──
+function handleAddFocus(e) {
   e.preventDefault();
-  const text = focusInput.value.trim();
+  const text = DOM.focusInput.value.trim();
   if (!text) return;
   
-  focusItems.push({ text, id: Date.now() });
-  focusInput.value = '';
-  saveToStorage();
+  const newItem = { id: cryptoRandomId(), text, percent: 0 };
+  focusItems.push(newItem);
+  focusItems = recalcSlicesByRank(focusItems);
+  
+  debouncedSave(focusItems);
+  DOM.focusInput.value = "";
   render();
 }
 
-function handleRemove(id) {
-  focusItems = focusItems.filter(item => item.id !== id);
-  if (selectedIndex >= focusItems.length) {
-    selectedIndex = null;
-  }
-  saveToStorage();
-  render();
-}
-
-function moveItem(direction) {
-  if (selectedIndex === null || focusItems.length < 2) return;
+function handleListClick(e) {
+  const listItem = e.target.closest('.listItem');
+  if (!listItem) return;
   
-  const newIndex = calculateNewIndex(selectedIndex, direction);
-  if (newIndex === selectedIndex) return;
+  const deleteBtn = e.target.closest('.deleteBtn');
+  const arrowBtn = e.target.closest('.arrowBtn');
   
-  const [item] = focusItems.splice(selectedIndex, 1);
-  focusItems.splice(newIndex, 0, item);
-  selectedIndex = newIndex;
-  
-  saveToStorage();
-  render();
-}
-
-function calculateNewIndex(current, direction) {
-  const max = focusItems.length - 1;
-  switch(direction) {
-    case 'top': return 0;
-    case 'up': return Math.max(0, current - 1);
-    case 'down': return Math.min(max, current + 1);
-    case 'bottom': return max;
-    default: return current;
+  if (deleteBtn) {
+    e.stopPropagation();
+    const id = deleteBtn.dataset.id;
+    const item = focusItems.find(x => x.id === id);
+    handleDeleteFocus(id, item?.text);
+  } else if (arrowBtn) {
+    e.stopPropagation();
+    const id = arrowBtn.dataset.id;
+    const action = arrowBtn.dataset.action;
+    if (action === 'up') moveFocusUp(id);
+    else if (action === 'down') moveFocusDown(id);
+  } else {
+    handleSliceClick(listItem.dataset.id);
   }
 }
 
-function handleKeyboard(e) {
-  if (selectedIndex === null) return;
+function handleDragStart(e) {
+  const listItem = e.target.closest('.listItem');
+  if (!listItem) return;
   
-  const isMod = e.ctrlKey || e.metaKey;
+  listItem.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", listItem.dataset.id);
+}
+
+function handleDragEnd(e) {
+  const listItem = e.target.closest('.listItem');
+  if (!listItem) return;
   
-  if (e.key === 'Escape') {
-    selectedIndex = null;
+  listItem.classList.remove("dragging");
+  document.querySelectorAll(".dragOver").forEach(el => el.classList.remove("dragOver"));
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  const listItem = e.target.closest('.listItem');
+  const dragging = document.querySelector(".dragging");
+  
+  if (listItem && dragging && dragging !== listItem) {
+    listItem.classList.add("dragOver");
+  }
+}
+
+function handleDragLeave(e) {
+  const listItem = e.target.closest('.listItem');
+  if (!listItem) return;
+  
+  if (!listItem.contains(e.relatedTarget)) {
+    listItem.classList.remove("dragOver");
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const listItem = e.target.closest('.listItem');
+  if (!listItem) return;
+  
+  listItem.classList.remove("dragOver");
+  
+  const draggedId = e.dataTransfer.getData("text/plain");
+  const targetId = listItem.dataset.id;
+  
+  if (!draggedId || draggedId === targetId) return;
+  
+  const fromIndex = focusItems.findIndex(x => x.id === draggedId);
+  const toIndex = focusItems.findIndex(x => x.id === targetId);
+  
+  if (fromIndex === -1 || toIndex === -1) return;
+  
+  // Reorder focusItems
+  const [movedItem] = focusItems.splice(fromIndex, 1);
+  focusItems.splice(toIndex, 0, movedItem);
+  
+  focusItems = recalcSlicesByRank(focusItems);
+  debouncedSave(focusItems);
+  render();
+}
+
+function handleKeyboardShortcuts(e) {
+  if (!selectedFocusId) return;
+  
+  // Only trigger if Ctrl/Cmd is pressed (to avoid interfering with form inputs)
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveFocusUp(selectedFocusId);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveFocusDown(selectedFocusId);
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      const item = focusItems.find(x => x.id === selectedFocusId);
+      handleDeleteFocus(selectedFocusId, item?.text);
+    }
+  } else if (e.key === 'Escape') {
+    selectedFocusId = null;
     render();
+  }
+}
+
+function handleClearAll() {
+  if (!focusItems.length) return;
+  if (!confirm(`Delete all ${focusItems.length} focus items? This cannot be undone.`)) return;
+  
+  focusItems = [];
+  selectedFocusId = null;
+  clearFocusItems();
+  render();
+}
+
+function handleExport() {
+  if (!focusItems.length) {
+    alert('No focus items to export.');
     return;
   }
-  
-  if (isMod && e.key === 'ArrowUp') {
-    e.preventDefault();
-    moveItem('up');
-  } else if (isMod && e.key === 'ArrowDown') {
-    e.preventDefault();
-    moveItem('down');
-  }
+  exportData(focusItems);
 }
 
-function selectItem(index) {
-  selectedIndex = selectedIndex === index ? null : index;
+function handleDeleteFocus(id, text) {
+  if (!confirm(`Delete "${text}"?`)) return;
+  
+  focusItems = focusItems.filter(x => x.id !== id);
+  if (selectedFocusId === id) selectedFocusId = null;
+  
+  focusItems = recalcSlicesByRank(focusItems);
+  debouncedSave(focusItems, true); // Immediate save for deletions
   render();
 }
 
-function handleClear() {
-  if (!focusItems.length) return;
-  if (confirm('Clear all focus items?')) {
-    focusItems = [];
-    selectedIndex = null;
-    saveToStorage();
-    render();
-  }
+function handleSliceClick(id) {
+  selectedFocusId = selectedFocusId === id ? null : id;
+  render();
 }
 
-function render() {
-  renderList();
-  renderPieChart();
-  renderControls();
-  updateItemCount();
-  toggleEmptyState();
-}
-
-function renderList() {
-  focusList.innerHTML = '';
+// ── Movement Functions ──
+function moveFocusUp(id) {
+  const index = focusItems.findIndex(x => x.id === id);
+  if (index <= 0) return;
   
-  focusItems.forEach((item, index) => {
-    const li = document.createElement('li');
-    li.className = 'list-item';
-    if (index === selectedIndex) li.classList.add('selected');
-    
-    const percent = calculatePercent(index);
-    const color = getColor(index);
-    
-    li.innerHTML = `
-      <div class="item-content">
-        <span class="item-color" style="background: ${color};"></span>
-        <span class="item-text">${escapeHtml(item.text)}</span>
-      </div>
-      <div class="item-actions">
-        <span class="item-percent">${percent}%</span>
-        <button class="item-remove" aria-label="Remove ${escapeHtml(item.text)}">×</button>
-      </div>
-    `;
-    
-    li.querySelector('.item-content').addEventListener('click', () => selectItem(index));
-    li.querySelector('.item-remove').addEventListener('click', (e) => {
-      e.stopPropagation();
-      handleRemove(item.id);
-    });
-    
-    focusList.appendChild(li);
-  });
+  [focusItems[index - 1], focusItems[index]] = [focusItems[index], focusItems[index - 1]];
+  focusItems = recalcSlicesByRank(focusItems);
+  debouncedSave(focusItems);
+  render();
+}
+
+function moveFocusDown(id) {
+  const index = focusItems.findIndex(x => x.id === id);
+  if (index === -1 || index >= focusItems.length - 1) return;
+  
+  [focusItems[index], focusItems[index + 1]] = [focusItems[index + 1], focusItems[index]];
+  focusItems = recalcSlicesByRank(focusItems);
+  debouncedSave(focusItems);
+  render();
+}
+
+function moveFocusTop(id) {
+  const index = focusItems.findIndex(x => x.id === id);
+  if (index <= 0) return;
+  
+  const [item] = focusItems.splice(index, 1);
+  focusItems.unshift(item);
+  focusItems = recalcSlicesByRank(focusItems);
+  debouncedSave(focusItems);
+  render();
+}
+
+function moveFocusBottom(id) {
+  const index = focusItems.findIndex(x => x.id === id);
+  if (index === -1 || index >= focusItems.length - 1) return;
+  
+  const [item] = focusItems.splice(index, 1);
+  focusItems.push(item);
+  focusItems = recalcSlicesByRank(focusItems);
+  debouncedSave(focusItems);
+  render();
+}
+
+// ── Render Functions ──
+function render() {
+  renderPieChart();
+  renderFocusList();
+  updateControls();
+  updateFooter();
 }
 
 function renderPieChart() {
-  pieChart.innerHTML = '';
-  if (focusItems.length === 0) return;
+  DOM.pieChart.innerHTML = "";
   
-  let currentAngle = -90;
-  
-  focusItems.forEach((item, index) => {
-    const percent = calculatePercent(index);
-    const angle = (percent / 100) * 360;
-    const color = getColor(index);
-    
-    const slice = createPieSlice(currentAngle, angle, color, index);
-    pieChart.appendChild(slice);
-    
-    const label = createPieLabel(currentAngle, angle, percent, index);
-    pieChart.appendChild(label);
-    
-    currentAngle += angle;
-  });
-}
-
-function createPieSlice(startAngle, sweepAngle, color, index) {
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  
-  const start = polarToCartesian(200, 200, 180, startAngle);
-  const end = polarToCartesian(200, 200, 180, startAngle + sweepAngle);
-  const largeArc = sweepAngle > 180 ? 1 : 0;
-  
-  const d = [
-    `M 200 200`,
-    `L ${start.x} ${start.y}`,
-    `A 180 180 0 ${largeArc} 1 ${end.x} ${end.y}`,
-    `Z`
-  ].join(' ');
-  
-  path.setAttribute('d', d);
-  path.setAttribute('fill', color);
-  path.setAttribute('class', 'pie-slice');
-  if (index === selectedIndex) path.classList.add('selected');
-  
-  path.addEventListener('click', () => selectItem(index));
-  
-  return path;
-}
-
-function createPieLabel(startAngle, sweepAngle, percent, index) {
-  const midAngle = startAngle + sweepAngle / 2;
-  const pos = polarToCartesian(200, 200, 120, midAngle);
-  
-  const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  text.setAttribute('x', pos.x);
-  text.setAttribute('y', pos.y);
-  text.setAttribute('class', 'pie-label');
-  text.setAttribute('text-anchor', 'middle');
-  text.setAttribute('dominant-baseline', 'middle');
-  text.textContent = `${percent}%`;
-  
-  text.addEventListener('click', () => selectItem(index));
-  
-  return text;
-}
-
-function polarToCartesian(cx, cy, radius, angle) {
-  const rad = (angle * Math.PI) / 180;
-  return {
-    x: cx + radius * Math.cos(rad),
-    y: cy + radius * Math.sin(rad)
-  };
-}
-
-function renderControls() {
-  if (selectedIndex === null || focusItems.length === 0) {
-    controlsSection.style.display = 'none';
-    return;
-  }
-  
-  controlsSection.style.display = 'block';
-  const item = focusItems[selectedIndex];
-  const percent = calculatePercent(selectedIndex);
-  
-  controlsTitle.textContent = item.text;
-  controlsPercent.textContent = `${percent}%`;
-  
-  moveTopBtn.disabled = selectedIndex === 0;
-  moveUpBtn.disabled = selectedIndex === 0;
-  moveDownBtn.disabled = selectedIndex === focusItems.length - 1;
-  moveBottomBtn.disabled = selectedIndex === focusItems.length - 1;
-}
-
-function calculatePercent(index) {
-  const total = getTotalWeight();
-  const weight = getWeight(index);
-  return Math.round((weight / total) * 100 * 10) / 10;
-}
-
-function getWeight(index) {
-  return Math.pow(2, focusItems.length - 1 - index);
-}
-
-function getTotalWeight() {
-  return focusItems.reduce((sum, _, i) => sum + getWeight(i), 0);
-}
-
-function getColor(index) {
-  const colors = [
-    '#22c55e', // Green (highest priority)
-    '#84cc16',
-    '#eab308',
-    '#f97316',
-    '#ef4444', // Red (lowest priority)
-  ];
-  
-  const ratio = focusItems.length > 1 ? index / (focusItems.length - 1) : 0;
-  const colorIndex = Math.floor(ratio * (colors.length - 1));
-  return colors[Math.min(colorIndex, colors.length - 1)];
-}
-
-function updateItemCount() {
-  itemCount.textContent = focusItems.length;
-}
-
-function toggleEmptyState() {
-  emptyState.style.display = focusItems.length === 0 ? 'flex' : 'none';
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-// Storage functions
-function saveToStorage() {
-  try {
-    localStorage.setItem('focus-budget:items', JSON.stringify(focusItems));
-  } catch (e) {
-    console.error('Failed to save to storage:', e);
-  }
-}
-
-function loadFromStorage() {
-  try {
-    const stored = localStorage.getItem('focus-budget:items');
-    if (stored) {
-      focusItems = JSON.parse(stored);
-    }
-  } catch (e) {
-    console.error('Failed to load from storage:', e);
-    focusItems = [];
-  }
-}
-
-// PDF Export with professional layout
-async function handleExport() {
   if (focusItems.length === 0) {
-    alert('Add some focus items first!');
+    DOM.pieChart.style.display = "none";
+    DOM.empty.style.display = "flex";
     return;
   }
-
-  try {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const margin = 20;
-    const contentWidth = pageWidth - (margin * 2);
-
-    // Draw pie chart at the top
-    await drawPieChartToPDF(doc, margin, margin, contentWidth, 80);
-
-    // Add title
-    let yPos = margin + 90;
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Focus Budget Interpretation & Use', margin, yPos);
-
-    // Add subtitle
-    yPos += 10;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const subtitle = 'This chart represents our current allocation of attention, not a wishlist.';
-    doc.text(subtitle, margin, yPos);
-
-    yPos += 5;
-    const subtitle2 = 'Each slice reflects the relative amount of focus a workstream, initiative, or obligation';
-    doc.text(subtitle2, margin, yPos);
-
-    yPos += 5;
-    const subtitle3 = 'is expected to receive during this period.';
-    doc.text(subtitle3, margin, yPos);
-
-    // Add "How to apply this:" section
-    yPos += 12;
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('How to apply this:', margin, yPos);
-
-    yPos += 8;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-
-    const bullets = [
-      'Begin work with the largest green slices. These are our highest priorities.',
-      'Time, energy, and decision-making should be spent in proportion to slice size.',
-      'Smaller slices are intentionally smaller. They are not ignored, but they do not',
-      'receive focus until higher-priority areas are covered.',
-      'Requests, new work, or scope changes should be evaluated against this budget.',
-      'Increasing focus in one area requires reducing it elsewhere.',
-      'This focus budget is a snapshot in time. It can be revisited and adjusted, but until it is,',
-      'it represents the agreed-upon order of operations.'
-    ];
-
-    const bulletGroups = [
-      [bullets[0]],
-      [bullets[1]],
-      [bullets[2], bullets[3]],
-      [bullets[4]],
-      [bullets[5]],
-      [bullets[6], bullets[7]]
-    ];
-
-    bulletGroups.forEach(group => {
-      doc.circle(margin + 1.5, yPos - 1, 0.8, 'F');
+  
+  DOM.pieChart.style.display = "block";
+  DOM.empty.style.display = "none";
+  
+  let currentAngle = -90; // Start at top
+  const { cx, cy, outerRadius, innerRadius } = CONFIG.PIE;
+  
+  focusItems.forEach((item, index) => {
+    const sweepAngle = (item.percent / 100) * 360;
+    const endAngle = currentAngle + sweepAngle;
+    
+    const pathData = createDonutPath(cx, cy, innerRadius, outerRadius, currentAngle, endAngle);
+    const color = colorForRank(index, focusItems.length);
+    const colorStr = hslToRgb(color.h, color.s, color.l);
+    
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.classList.add("slice");
+    g.dataset.id = item.id;
+    if (selectedFocusId === item.id) g.classList.add("selected");
+    
+    const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    pathEl.setAttribute("d", pathData);
+    pathEl.setAttribute("fill", colorStr);
+    pathEl.setAttribute("stroke", "rgba(11, 13, 18, 0.8)");
+    pathEl.setAttribute("stroke-width", "2");
+    pathEl.setAttribute("shape-rendering", "geometricPrecision");
+    
+    g.appendChild(pathEl);
+    
+    // Add text label for the item name
+    const midAngle = (currentAngle + endAngle) / 2;
+    const labelRadius = (innerRadius + outerRadius) / 2;
+    const labelX = cx + labelRadius * Math.cos(midAngle * Math.PI / 180);
+    const labelY = cy + labelRadius * Math.sin(midAngle * Math.PI / 180);
+    
+    // Only show label if slice is big enough
+    if (sweepAngle > 15) {
+      // Add a background rectangle for better text visibility
+      const textBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
       
-      group.forEach((line, idx) => {
-        doc.text(line, margin + 4, yPos + (idx * 5));
-      });
+      // Truncate text if too long
+      let displayText = item.text;
+      if (displayText.length > 20) {
+        displayText = displayText.substring(0, 17) + "...";
+      }
       
-      yPos += (group.length * 5) + 3;
-    });
-
-    // Add support section
-    yPos += 5;
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Support & best practices (optional)', margin, yPos);
-
-    yPos += 8;
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const support1 = 'Teams that want guidance on creating, revisiting, and maintaining effective focus';
-    const support2 = 'budgets can explore Sheety memberships for best-practice use.';
-    doc.text(support1, margin, yPos);
-    yPos += 5;
-    doc.text(support2, margin, yPos);
-
-    // Save the PDF
-    const filename = `focus-budget-${new Date().toISOString().slice(0, 10)}.pdf`;
-    doc.save(filename);
-
-  } catch (error) {
-    console.error('PDF export failed:', error);
-    alert('Failed to export PDF. Please try again.');
-  }
+      // Create text first to measure it
+      text.setAttribute("x", labelX);
+      text.setAttribute("y", labelY);
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("dominant-baseline", "middle");
+      text.setAttribute("fill", "white");
+      text.setAttribute("font-size", "14");
+      text.setAttribute("font-weight", "700");
+      text.setAttribute("pointer-events", "none");
+      text.setAttribute("style", "text-shadow: 0 2px 4px rgba(0,0,0,0.8), 0 0 2px rgba(0,0,0,0.9);");
+      text.textContent = displayText;
+      
+      g.appendChild(text);
+    }
+    
+    g.addEventListener("click", () => handleSliceClick(item.id));
+    
+    DOM.pieChart.appendChild(g);
+    currentAngle = endAngle;
+  });
+  
+  // Add center count
+  const centerGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  centerGroup.setAttribute("pointer-events", "none");
+  
+  const countText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  countText.setAttribute("x", cx);
+  countText.setAttribute("y", cy - 10);
+  countText.setAttribute("text-anchor", "middle");
+  countText.setAttribute("dominant-baseline", "middle");
+  countText.setAttribute("fill", "rgba(255, 255, 255, 0.9)");
+  countText.setAttribute("font-size", "36");
+  countText.setAttribute("font-weight", "700");
+  countText.textContent = focusItems.length;
+  
+  const labelText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  labelText.setAttribute("x", cx);
+  labelText.setAttribute("y", cy + 15);
+  labelText.setAttribute("text-anchor", "middle");
+  labelText.setAttribute("dominant-baseline", "middle");
+  labelText.setAttribute("fill", "rgba(255, 255, 255, 0.6)");
+  labelText.setAttribute("font-size", "13");
+  labelText.setAttribute("font-weight", "500");
+  labelText.textContent = focusItems.length === 1 ? "item" : "items";
+  
+  centerGroup.appendChild(countText);
+  centerGroup.appendChild(labelText);
+  DOM.pieChart.appendChild(centerGroup);
 }
 
-async function drawPieChartToPDF(doc, x, y, width, height) {
-  const centerX = x + width / 2;
-  const centerY = y + height / 2;
-  const radius = Math.min(width, height) / 2 - 5;
-
-  let currentAngle = -90;
-
+function renderFocusList() {
+  DOM.list.innerHTML = "";
+  
   focusItems.forEach((item, index) => {
-    const percent = calculatePercent(index);
-    const sweepAngle = (percent / 100) * 360;
-    const color = getColor(index);
-
-    // Convert hex color to RGB
-    const rgb = hexToRgb(color);
-    doc.setFillColor(rgb.r, rgb.g, rgb.b);
-
-    // Draw pie slice
-    drawPieSlicePDF(doc, centerX, centerY, radius, currentAngle, sweepAngle);
-
-    // Add percentage label
-    const midAngle = currentAngle + sweepAngle / 2;
-    const labelRadius = radius * 0.65;
-    const labelPos = polarToCartesianPDF(centerX, centerY, labelRadius, midAngle);
+    const li = document.createElement("li");
+    li.className = "listItem";
+    li.dataset.id = item.id;
+    li.draggable = true;
+    if (selectedFocusId === item.id) li.classList.add("selected");
     
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(255, 255, 255);
-    doc.text(`${percent}%`, labelPos.x, labelPos.y, { align: 'center' });
-
-    currentAngle += sweepAngle;
-  });
-
-  // Add legend below the pie
-  let legendY = y + height + 10;
-  doc.setFontSize(9);
-  doc.setTextColor(0, 0, 0);
-
-  focusItems.forEach((item, index) => {
-    const color = getColor(index);
-    const rgb = hexToRgb(color);
-    const percent = calculatePercent(index);
-
-    // Color box
-    doc.setFillColor(rgb.r, rgb.g, rgb.b);
-    doc.rect(x, legendY - 3, 4, 4, 'F');
-
-    // Item text
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Item ${index + 1}`, x + 6, legendY);
+    const color = colorForRank(index, focusItems.length);
+    const colorStr = hslToRgb(color.h, color.s, color.l);
     
-    // Percentage
-    const textWidth = doc.getTextWidth(`Item ${index + 1}`);
-    doc.setFont('helvetica', 'normal');
-    doc.text(` - ${percent}%`, x + 6 + textWidth, legendY);
-
-    legendY += 6;
+    li.innerHTML = `
+      <div class="indicator" style="background: ${colorStr};"></div>
+      <div class="dragHandle" title="Drag to reorder">⋮⋮</div>
+      <div class="itemContent">
+        <div class="itemText">${escapeHtml(item.text)}</div>
+        <div class="itemMeta">${item.percent.toFixed(0)}%</div>
+      </div>
+      <div class="itemActions">
+        <button class="arrowBtn" data-action="up" data-id="${item.id}" aria-label="Move up" ${index === 0 ? 'disabled' : ''}>↑</button>
+        <button class="arrowBtn" data-action="down" data-id="${item.id}" aria-label="Move down" ${index === focusItems.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="deleteBtn" data-id="${item.id}" aria-label="Delete ${escapeHtml(item.text)}">✕</button>
+      </div>
+    `;
+    
+    DOM.list.appendChild(li);
   });
 }
 
-function drawPieSlicePDF(doc, cx, cy, radius, startAngle, sweepAngle) {
-  const steps = Math.max(20, Math.ceil(sweepAngle / 5));
-  const angleStep = sweepAngle / steps;
-
-  doc.moveTo(cx, cy);
-
-  for (let i = 0; i <= steps; i++) {
-    const angle = startAngle + (i * angleStep);
-    const pos = polarToCartesianPDF(cx, cy, radius, angle);
-    doc.lineTo(pos.x, pos.y);
+function updateControls() {
+  if (!selectedFocusId) {
+    DOM.controlsSection.style.display = "none";
+    return;
   }
-
-  doc.lineTo(cx, cy);
-  doc.fill();
+  
+  const item = focusItems.find(x => x.id === selectedFocusId);
+  if (!item) {
+    DOM.controlsSection.style.display = "none";
+    return;
+  }
+  
+  DOM.controlsSection.style.display = "block";
+  
+  const index = focusItems.findIndex(x => x.id === selectedFocusId);
+  
+  DOM.controlsTitle.textContent = item.text;
+  DOM.controlsPercent.textContent = `${item.percent.toFixed(0)}%`;
+  
+  const moveTopBtn = document.getElementById("moveTopBtn");
+  const moveUpBtn = document.getElementById("moveUpBtn");
+  const moveDownBtn = document.getElementById("moveDownBtn");
+  const moveBottomBtn = document.getElementById("moveBottomBtn");
+  
+  moveTopBtn.disabled = index === 0;
+  moveUpBtn.disabled = index === 0;
+  moveDownBtn.disabled = index === focusItems.length - 1;
+  moveBottomBtn.disabled = index === focusItems.length - 1;
+  
+  moveTopBtn.onclick = () => moveFocusTop(selectedFocusId);
+  moveUpBtn.onclick = () => moveFocusUp(selectedFocusId);
+  moveDownBtn.onclick = () => moveFocusDown(selectedFocusId);
+  moveBottomBtn.onclick = () => moveFocusBottom(selectedFocusId);
 }
 
-function polarToCartesianPDF(cx, cy, radius, angle) {
-  const rad = (angle * Math.PI) / 180;
-  return {
-    x: cx + radius * Math.cos(rad),
-    y: cy + radius * Math.sin(rad)
-  };
+function updateFooter() {
+  DOM.itemCount.textContent = focusItems.length;
+  DOM.clearBtn.disabled = focusItems.length === 0;
+  DOM.exportBtn.disabled = focusItems.length === 0;
 }
 
-function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? {
-    r: parseInt(result[1], 16),
-    g: parseInt(result[2], 16),
-    b: parseInt(result[3], 16)
-  } : { r: 0, g: 0, b: 0 };
+// ── Start the app ──
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
 }
