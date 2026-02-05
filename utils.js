@@ -261,14 +261,14 @@ function exportData(focusItems) {
     doc.setFillColor(r, g, b);
     doc.rect(margin, legendY - 3, 4, 4, 'F');
     
-    // Item text
+    // Item text (actual item name)
     doc.setFont('helvetica', 'normal');
     const displayText = item.text.length > 70 ? item.text.substring(0, 67) + '...' : item.text;
-    doc.text(`Item ${index + 1}`, margin + 6, legendY);
+    doc.text(displayText, margin + 6, legendY);
     
     // Percentage
+    const textWidth = doc.getTextWidth(displayText);
     doc.setFont('helvetica', 'normal');
-    const textWidth = doc.getTextWidth(`Item ${index + 1}`);
     doc.text(` ${item.percent.toFixed(1)}%`, margin + 6 + textWidth, legendY);
     
     legendY += 6;
