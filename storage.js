@@ -32,7 +32,14 @@ function saveFocusItems(data) {
 function loadFocusItems() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      // First time loading - return sample items
+      return [
+        { id: 'sample-1', text: 'Lights', percent: 57.1 },
+        { id: 'sample-2', text: 'Camera', percent: 28.6 },
+        { id: 'sample-3', text: 'Action', percent: 14.3 }
+      ];
+    }
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(item => 
