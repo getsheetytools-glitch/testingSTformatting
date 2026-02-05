@@ -478,6 +478,24 @@ button:disabled {
   color: var(--text);
 }
 
+/* Highlight animation for first-time visitors */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(106, 227, 180, 0.4);
+    border-color: var(--accent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(106, 227, 180, 0);
+    border-color: var(--accent);
+  }
+}
+
+.footerBtn.highlight-first-visit {
+  animation: pulseGlow 2s ease-in-out 3;
+  border-color: var(--accent);
+  background: rgba(106, 227, 180, 0.1);
+}
+
 .modalOverlay {
   display: none;
   position: fixed;

@@ -245,5 +245,40 @@
     })();
   </script>
 
+  <!-- Highlight Clear All for first-time visitors -->
+  <script>
+    (function () {
+      // Check if this is first visit with sample data
+      const hasSeenSamples = localStorage.getItem('focus-budget:samples-seen');
+      const hasSavedData = localStorage.getItem('sheety:focusBudget:v1');
+      
+      // Only highlight if no saved data (meaning samples are showing)
+      if (!hasSeenSamples && !hasSavedData) {
+        const clearBtn = document.getElementById('clearBtn');
+        if (clearBtn) {
+          // Add highlight class after intro modal closes
+          setTimeout(() => {
+            clearBtn.classList.add('highlight-first-visit');
+            
+            // Remove highlight after animation or when clicked
+            const removeHighlight = () => {
+              clearBtn.classList.remove('highlight-first-visit');
+              localStorage.setItem('focus-budget:samples-seen', '1');
+              clearBtn.removeEventListener('click', removeHighlight);
+            };
+            
+            clearBtn.addEventListener('click', removeHighlight);
+            
+            // Auto-remove after 6 seconds (3 pulse cycles)
+            setTimeout(() => {
+              clearBtn.classList.remove('highlight-first-visit');
+              localStorage.setItem('focus-budget:samples-seen', '1');
+            }, 6000);
+          }, 1000);
+        }
+      }
+    })();
+  </script>
+
 </body>
 </html>
