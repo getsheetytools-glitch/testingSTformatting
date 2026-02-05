@@ -1,6 +1,6 @@
 # Sheety Tools Website
 
-Free, open-source productivity tools. Simple, beautiful, and built for focus.
+Free productivity tools. Simple, beautiful, and built for focus.
 
 ## File Structure
 
@@ -24,56 +24,14 @@ sheety.tools/
 - **Description**: Visualize priorities with a pie chart where each item is worth 2× the next
 - **Status**: ✅ Live
 
-## Adding New Products
+## License
 
-To add a new product to the homepage:
+**Proprietary Software**  
+© 2026 Sheety Tools. All rights reserved.
 
-1. **Create the product files**
-   - Create `your-product.html` for the app
-   - Create `your-product.css` for styles
-   - Create any necessary JS files
-
-2. **Add to homepage**
-   Edit `index.html` and add a new product card in the `.product-grid`:
-
-   ```html
-   <article class="product-card">
-     <div class="product-icon">🎯</div>
-     <h3 class="product-name">Your Product Name</h3>
-     <p class="product-description">
-       Brief description of what your product does.
-     </p>
-     <div class="product-meta">
-       <span class="badge">Free</span>
-       <span class="badge">Open Source</span>
-     </div>
-     <div class="product-actions">
-       <a href="./your-product.html" class="btn btn-primary">Launch App</a>
-       <a href="https://github.com/yourusername/your-product" 
-          class="btn btn-secondary" 
-          target="_blank" 
-          rel="noopener noreferrer">
-         View Source
-       </a>
-     </div>
-   </article>
-   ```
-
-3. **Update the "coming soon" card**
-   - Remove it once you have 3+ products
-   - Or keep it for community engagement
+All code, design, and functionality are proprietary. You may use the tools freely, but you may not copy, modify, redistribute, or sell the software.
 
 ## Deployment
-
-### GitHub Pages
-1. Push to a GitHub repository
-2. Enable GitHub Pages in repository settings
-3. Set source to `main` branch, root folder
-
-### Netlify
-1. Connect your GitHub repository
-2. Build command: (none)
-3. Publish directory: `/`
 
 ### Custom Domain
 Point your domain to your hosting provider's nameservers.
@@ -82,11 +40,20 @@ For `sheety.tools`:
 - Set up DNS A records
 - Enable HTTPS/SSL
 
+### GitHub Pages
+1. Push to a GitHub repository (set to private if desired)
+2. Enable GitHub Pages in repository settings
+3. Set source to `main` branch, root folder
+
+### Netlify
+1. Connect your repository
+2. Build command: (none)
+3. Publish directory: `/`
+
 ## Customization
 
 ### Update Links
 Search for these placeholders and replace:
-- `https://github.com/yourusername` - Your GitHub profile
 - `https://twitter.com/yourusername` - Your Twitter
 - `https://ko-fi.com/sheetytools` - Your Ko-fi page
 
@@ -105,22 +72,16 @@ Edit CSS variables in `homepage.css`:
 ### Logo
 Replace `Sheety_Logo.png` with your own logo (recommended: 512×512px PNG)
 
-## License
-
-All Sheety Tools are open source under the MIT License.
-
 ## Support
 
 If you find these tools useful, consider supporting development:
 - Ko-fi: https://ko-fi.com/sheetytools
-- GitHub Sponsors: (coming soon)
 
 ## Contact
 
 - Website: https://sheety.tools
-- GitHub: https://github.com/yourusername
 - Twitter: https://twitter.com/yourusername
 
 ---
 
-Built with ❤️ by the Sheety Tools team
+Built with ❤️ by Sheety Tools
